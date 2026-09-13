@@ -33,7 +33,7 @@ OPTIONAL_DISPLAY_COLUMNS = [
     {"key": "農薬グループ", "label": "農薬グループ"},
     {"key": "農薬名", "label": "農薬名"},
     {"key": "有効成分", "label": "有効成分"},
-    {"key": "作用機作分類", "label": "作用機作分類"},
+    {"key": "作用機作分類", "label": "RACコード"},
     {"key": "希釈倍数使用量", "label": "希釈倍率"},
     {"key": "使用時期", "label": "使用時期"},
     {"key": "本剤の使用回数", "label": "使用回数"},
@@ -806,6 +806,7 @@ def create_excel(
 def rename_for_display(df: pd.DataFrame) -> pd.DataFrame:
     """Web表示用に列名を変更"""
     rename_map = {
+        "作用機作分類": "RACコード",
         "希釈倍数使用量": "希釈倍率",
         "本剤の使用回数": "使用回数",
     }
