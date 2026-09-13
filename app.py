@@ -865,20 +865,9 @@ def display_table_like_excel(df: pd.DataFrame, max_count: int):
     column_config = {}
 
     if "作付名" in display_df.columns:
-        def display_units(value):
-            return sum(
-                2 if unicodedata.east_asian_width(char) in {"W", "F", "A"} else 1
-                for char in clean_text(value)
-            )
-
-        longest_name = max(
-            [display_units("作付名")]
-            + [display_units(value) for value in display_df["作付名"]]
-        )
-        crop_name_width = max(200, min(600, longest_name * 9 + 40))
         column_config["作付名"] = st.column_config.TextColumn(
             "作付名",
-            width=crop_name_width,
+            width=160,
         )
 
     if "作付名" in display_df.columns:
