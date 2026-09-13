@@ -875,7 +875,7 @@ def display_table_like_excel(df: pd.DataFrame, max_count: int):
         styled_df,
         use_container_width=True,
         hide_index=True,
-        height=780,
+        height=900,
     )
 
 
@@ -895,9 +895,6 @@ def load_csv_from_same_folder(filename: str):
 
 st.title("農薬散布記録一覧")
 
-if st.button("Google Driveから最新データを再読み込み", type="primary"):
-    download_google_drive_csv.clear()
-
 drive_file_ids = get_drive_file_ids()
 drive_configured = all(drive_file_ids.values())
 
@@ -907,7 +904,6 @@ try:
             raw_df = read_google_drive_csv(drive_file_ids["main"])
             pesticide_info_df = read_google_drive_csv(drive_file_ids["pesticide"])
             registration_info_df = read_google_drive_csv(drive_file_ids["registration"])
-        data_source = "Google Drive（データは最大60秒間キャッシュされます）"
     else:
         # ローカルでの動作確認用。デプロイ時はSecretsを設定する。
         raw_df, _ = load_csv_from_same_folder("作業記録４ 農薬.csv")
@@ -927,7 +923,6 @@ try:
                 language="toml",
             )
             st.stop()
-        data_source = "アプリと同じフォルダのCSV（ローカル動作確認）"
 
     if raw_df is not None and pesticide_info_df is not None and registration_info_df is not None:
         (
@@ -948,8 +943,15 @@ try:
         if default_start < min_date:
             default_start = min_date
 
+        refresh_col, updated_col = st.columns([2, 3], vertical_alignment="center")
+        with refresh_col:
+            if st.button("Google Driveから最新データを再読み込み", type="primary"):
+                download_google_drive_csv.clear()
+                st.rerun()
+        with updated_col:
+            st.markdown(f"**更新日：{max_date.strftime('%Y/%m/%d')}**")
+
         st.success("CSVを読み込みました。")
-        st.caption(f"データ取得元：{data_source}")
 
         if unmatched_pesticide_info_count > 0:
             st.warning(
