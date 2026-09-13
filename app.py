@@ -867,7 +867,7 @@ def display_table_like_excel(df: pd.DataFrame, max_count: int):
     if "作付名" in display_df.columns:
         column_config["作付名"] = st.column_config.TextColumn(
             "作付名",
-            width=160,
+            width=100,
         )
 
     if "作付名" in display_df.columns:
