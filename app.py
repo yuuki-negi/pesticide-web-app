@@ -862,6 +862,24 @@ def display_table_like_excel(df: pd.DataFrame, max_count: int):
 
     original_df = df.copy()
     display_df = make_display_df(df)
+    column_config = {}
+
+    if "作付名" in display_df.columns:
+        def display_units(value):
+            return sum(
+                2 if unicodedata.east_asian_width(char) in {"W", "F", "A"} else 1
+                for char in clean_text(value)
+            )
+
+        longest_name = max(
+            [display_units("作付名")]
+            + [display_units(value) for value in display_df["作付名"]]
+        )
+        crop_name_width = max(200, min(600, longest_name * 9 + 40))
+        column_config["作付名"] = st.column_config.TextColumn(
+            "作付名",
+            width=crop_name_width,
+        )
 
     if "作付名" in display_df.columns:
         display_df["作付名"] = display_df["作付名"].mask(
@@ -876,6 +894,7 @@ def display_table_like_excel(df: pd.DataFrame, max_count: int):
         use_container_width=True,
         hide_index=True,
         height=900,
+        column_config=column_config,
     )
 
 
@@ -943,13 +962,7 @@ try:
         if default_start < min_date:
             default_start = min_date
 
-        refresh_col, updated_col = st.columns([2, 3], vertical_alignment="center")
-        with refresh_col:
-            if st.button("Google Driveから最新データを再読み込み", type="primary"):
-                download_google_drive_csv.clear()
-                st.rerun()
-        with updated_col:
-            st.markdown(f"**更新日：{max_date.strftime('%Y/%m/%d')}**")
+        st.markdown(f"**更新日：{max_date.strftime('%Y/%m/%d')}**")
 
         st.success("CSVを読み込みました。")
 
@@ -1068,6 +1081,11 @@ try:
         selected_field_group = st.selectbox(
             "圃場グループを選択",
             options=field_groups,
+            index=(
+                field_groups.index("北海道農場")
+                if "北海道農場" in field_groups
+                else 0
+            ),
         )
 
         filtered = summary_filtered_by_pesticide_group[
