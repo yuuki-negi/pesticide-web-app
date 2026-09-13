@@ -942,6 +942,22 @@ try:
         min_date = base_df["日付"].min().date()
         max_date = base_df["日付"].max().date()
 
+        if "予実" not in raw_df.columns:
+            raise ValueError("作業記録CSVに『予実』列がありません。")
+
+        actual_dates = pd.to_datetime(
+            raw_df.loc[
+                raw_df["予実"].apply(clean_text).eq("実績"),
+                "日付",
+            ],
+            errors="coerce",
+        ).dropna()
+
+        if actual_dates.empty:
+            raise ValueError("『予実』が『実績』の作業記録がありません。")
+
+        latest_actual_date = actual_dates.max().date()
+
         default_start = pd.Timestamp(
             year=base_df["日付"].max().year,
             month=4,
@@ -951,7 +967,7 @@ try:
         if default_start < min_date:
             default_start = min_date
 
-        st.markdown(f"**更新日：{max_date.strftime('%Y/%m/%d')}**")
+        st.markdown(f"**更新日：{latest_actual_date.strftime('%Y/%m/%d')}**")
 
         st.success("CSVを読み込みました。")
 
