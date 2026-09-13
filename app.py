@@ -450,6 +450,7 @@ def prepare_summary(df: pd.DataFrame, start_date, end_date):
                 if (field_group, crop_name) in latest_dates_by_crop
                 else ""
             ),
+            "_作付最新日": latest_dates_by_crop.get((field_group, crop_name), ""),
             "農薬グループ": normalize_pesticide_group(pesticide_group),
             "農薬名": clean_text(pesticide_name),
             "有効成分": clean_text(active_ingredient),
@@ -882,8 +883,13 @@ def make_display_df(df: pd.DataFrame) -> pd.DataFrame:
     display_df = display_df.fillna("")
     display_df = display_df.replace(["None", "nan", "NaT", "null"], "")
 
-    if "_使用可能回数" in display_df.columns:
-        display_df = display_df.drop(columns=["_使用可能回数"])
+    helper_columns = [
+        col
+        for col in ["_使用可能回数", "_作付最新日"]
+        if col in display_df.columns
+    ]
+    if helper_columns:
+        display_df = display_df.drop(columns=helper_columns)
 
     display_df = rename_for_display(display_df)
 
@@ -891,7 +897,7 @@ def make_display_df(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def style_web_table(display_df: pd.DataFrame, original_df: pd.DataFrame, max_count: int):
-    """Web表示で使用回数超過部分を暗く塗る"""
+    """Web表示で使用回数超過部分と作付ごとの最新日を色分けする"""
 
     date_cols = [f"{i}回目" for i in range(1, max_count + 1)]
 
@@ -915,6 +921,26 @@ def style_web_table(display_df: pd.DataFrame, original_df: pd.DataFrame, max_cou
                         "background-color: #595959; "
                         "color: white;"
                     )
+
+        if row.name in original_df.index and "_作付最新日" in original_df.columns:
+            raw_latest_date = original_df.loc[row.name, "_作付最新日"]
+            latest_date_label = (
+                format_date(raw_latest_date)
+                if clean_text(raw_latest_date)
+                else ""
+            )
+
+            if latest_date_label:
+                for col in date_cols:
+                    if col in row.index and row[col] == latest_date_label:
+                        col_idx = list(row.index).index(col)
+
+                        # 使用回数超過の暗色と最新日の薄緑が重なる場合は、
+                        # 先に設定した暗色を優先して薄緑では上書きしない。
+                        if styles[col_idx]:
+                            continue
+
+                        styles[col_idx] = "background-color: #E8F5E9;"
 
         return styles
 
@@ -1169,7 +1195,7 @@ try:
         display_cols = (
             get_display_column_keys(selected_optional_columns)
             + count_cols
-            + ["_使用可能回数"]
+            + ["_使用可能回数", "_作付最新日"]
         )
 
         st.subheader("グループ別一覧")
