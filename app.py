@@ -875,7 +875,7 @@ def display_table_like_excel(df: pd.DataFrame, max_count: int):
         styled_df,
         use_container_width=True,
         hide_index=True,
-        height=650,
+        height=780,
     )
 
 
@@ -894,10 +894,6 @@ def load_csv_from_same_folder(filename: str):
 # =========================
 
 st.title("農薬散布記録一覧")
-
-st.markdown(
-    "Google Drive上の作業記録CSV、農薬情報CSV、農薬登録情報CSVから一覧を作成します。"
-)
 
 if st.button("Google Driveから最新データを再読み込み", type="primary"):
     download_google_drive_csv.clear()
@@ -1013,7 +1009,7 @@ try:
             with checkbox_cols[i % len(checkbox_cols)]:
                 checked = st.checkbox(
                     group_name,
-                    value=True,
+                    value=group_name not in {"展着剤", "除草剤"},
                     key=f"pesticide_group_{group_name}",
                 )
 
@@ -1038,7 +1034,7 @@ try:
             with option_cols[i % 4]:
                 checked = st.checkbox(
                     item["label"],
-                    value=True,
+                    value=item["key"] != "有効成分",
                     key=f"display_column_{item['key']}",
                 )
 
