@@ -1061,7 +1061,10 @@ try:
         if default_start < min_date:
             default_start = min_date
 
-        st.markdown(f"**更新日：{latest_actual_date.strftime('%Y/%m/%d')}**")
+        st.markdown(
+            f"**アグリノート出力データ更新日："
+            f"{latest_actual_date.strftime('%Y/%m/%d')}**"
+        )
 
         st.success("CSVを読み込みました。")
 
