@@ -30,6 +30,7 @@ REGISTRATION_COLUMNS = [
 ]
 
 OPTIONAL_DISPLAY_COLUMNS = [
+    {"key": "前回防除日", "label": "前回防除日"},
     {"key": "農薬グループ", "label": "農薬グループ"},
     {"key": "農薬名", "label": "農薬名"},
     {"key": "有効成分", "label": "有効成分"},
@@ -382,6 +383,14 @@ def prepare_summary(df: pd.DataFrame, start_date, end_date):
     if filtered.empty:
         raise ValueError("指定期間内の農薬散布データがありません。")
 
+    today = pd.Timestamp.today().normalize()
+    latest_dates_by_crop = (
+        filtered.loc[filtered["日付"] <= today]
+        .groupby(["圃場グループ", "作付名"])["日付"]
+        .max()
+        .to_dict()
+    )
+
     base_columns = [
         "圃場グループ",
         "作付名",
@@ -436,6 +445,11 @@ def prepare_summary(df: pd.DataFrame, start_date, end_date):
         row = {
             "圃場グループ": clean_text(field_group),
             "作付名": clean_text(crop_name),
+            "前回防除日": (
+                f"{(today - pd.Timestamp(latest_dates_by_crop[(field_group, crop_name)])).days}日前"
+                if (field_group, crop_name) in latest_dates_by_crop
+                else ""
+            ),
             "農薬グループ": normalize_pesticide_group(pesticide_group),
             "農薬名": clean_text(pesticide_name),
             "有効成分": clean_text(active_ingredient),
@@ -510,6 +524,8 @@ def get_column_width(header_name):
     """列名に応じてExcel列幅を返す"""
     if header_name == "作付名":
         return 24
+    if header_name == "前回防除日":
+        return 14
     if header_name == "農薬グループ":
         return 14
     if header_name == "農薬名":
@@ -647,6 +663,46 @@ def merge_same_values(ws, col_num: int, start_row: int):
             current_value = value
 
 
+def merge_column_by_group(
+    ws,
+    group_col_num: int,
+    target_col_num: int,
+    start_row: int,
+):
+    """基準列が同じ行を単位として、対象列を縦結合する"""
+    max_row = ws.max_row
+
+    if max_row < start_row:
+        return
+
+    current_group = ws.cell(start_row, group_col_num).value
+    merge_start = start_row
+
+    for row in range(start_row + 1, max_row + 2):
+        group_value = (
+            ws.cell(row, group_col_num).value
+            if row <= max_row
+            else None
+        )
+
+        if group_value != current_group:
+            if merge_start < row - 1:
+                ws.merge_cells(
+                    start_row=merge_start,
+                    start_column=target_col_num,
+                    end_row=row - 1,
+                    end_column=target_col_num,
+                )
+                ws.cell(merge_start, target_col_num).alignment = Alignment(
+                    horizontal="center",
+                    vertical="center",
+                    wrap_text=True,
+                )
+
+            merge_start = row
+            current_group = group_value
+
+
 def write_table(
     ws,
     df: pd.DataFrame,
@@ -749,6 +805,13 @@ def create_excel(
         max_count=max_count,
     )
 
+    if "前回防除日" in selected_optional_columns:
+        merge_column_by_group(
+            group_ws,
+            group_col_num=1,
+            target_col_num=2,
+            start_row=6,
+        )
     merge_same_values(group_ws, col_num=1, start_row=6)
 
     # =========================
@@ -872,10 +935,14 @@ def display_table_like_excel(df: pd.DataFrame, max_count: int):
         )
 
     if "作付名" in display_df.columns:
-        display_df["作付名"] = display_df["作付名"].mask(
-            display_df["作付名"].duplicated(),
-            "",
-        )
+        duplicate_crop_rows = display_df["作付名"].duplicated()
+        display_df["作付名"] = display_df["作付名"].mask(duplicate_crop_rows, "")
+
+        if "前回防除日" in display_df.columns:
+            display_df["前回防除日"] = display_df["前回防除日"].mask(
+                duplicate_crop_rows,
+                "",
+            )
 
     styled_df = style_web_table(display_df, original_df, max_count)
 
