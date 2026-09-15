@@ -3,7 +3,9 @@
 import io
 import re
 import unicodedata
+from email.utils import parsedate_to_datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import pandas as pd
 import requests
@@ -70,8 +72,8 @@ def read_csv_auto(file_or_path) -> pd.DataFrame:
 
 
 @st.cache_data(ttl=60, show_spinner=False)
-def download_google_drive_csv(file_id: str) -> bytes:
-    """リンク共有されたGoogle Drive上のCSVを取得する。"""
+def download_google_drive_csv(file_id: str) -> tuple[bytes, str]:
+    """リンク共有されたGoogle Drive上のCSVと更新日時ヘッダーを取得する。"""
     file_id = str(file_id).strip()
     if not file_id:
         raise ValueError("Google DriveのファイルIDが空です。")
@@ -91,12 +93,33 @@ def download_google_drive_csv(file_id: str) -> bytes:
             "共有設定を「リンクを知っている全員・閲覧者」にしてください。"
         )
 
-    return response.content
+    return response.content, response.headers.get("Last-Modified", "")
 
 
-def read_google_drive_csv(file_id: str) -> pd.DataFrame:
+def read_google_drive_csv(file_id: str, include_modified_time: bool = False):
     """Google Drive上のCSVを文字コード自動判定で読む。"""
-    return read_csv_auto(io.BytesIO(download_google_drive_csv(file_id)))
+    content, last_modified = download_google_drive_csv(file_id)
+    df = read_csv_auto(io.BytesIO(content))
+    return (df, last_modified) if include_modified_time else df
+
+
+def format_drive_modified_time(last_modified: str) -> str:
+    """DriveのLast-Modifiedを日本時間の年月日時分秒で表示する。"""
+    if not last_modified:
+        return "取得できません"
+
+    try:
+        modified_at = parsedate_to_datetime(last_modified)
+    except (TypeError, ValueError):
+        return "取得できません"
+    if modified_at.tzinfo is None:
+        return "取得できません"
+
+    local_time = modified_at.astimezone(ZoneInfo("Asia/Tokyo"))
+    return (
+        f"{local_time.year}年{local_time.month}月{local_time.day}日 "
+        f"{local_time.hour}時{local_time.minute}分{local_time.second}秒"
+    )
 
 
 def get_drive_file_ids():
@@ -1017,11 +1040,14 @@ drive_configured = all(drive_file_ids.values())
 try:
     if drive_configured:
         with st.spinner("Google Driveから最新データを読み込んでいます..."):
-            raw_df = read_google_drive_csv(drive_file_ids["main"])
+            raw_df, main_csv_last_modified = read_google_drive_csv(
+                drive_file_ids["main"], include_modified_time=True
+            )
             pesticide_info_df = read_google_drive_csv(drive_file_ids["pesticide"])
             registration_info_df = read_google_drive_csv(drive_file_ids["registration"])
     else:
         # ローカルでの動作確認用。デプロイ時はSecretsを設定する。
+        main_csv_last_modified = ""
         raw_df, _ = load_csv_from_same_folder("作業記録４ 農薬.csv")
         pesticide_info_df, _ = load_csv_from_same_folder("農薬情報.csv")
         registration_info_df, _ = load_csv_from_same_folder("農薬登録情報.csv")
@@ -1050,22 +1076,6 @@ try:
         min_date = base_df["日付"].min().date()
         max_date = base_df["日付"].max().date()
 
-        if "予実" not in raw_df.columns:
-            raise ValueError("作業記録CSVに『予実』列がありません。")
-
-        actual_dates = pd.to_datetime(
-            raw_df.loc[
-                raw_df["予実"].apply(clean_text).eq("実績"),
-                "日付",
-            ],
-            errors="coerce",
-        ).dropna()
-
-        if actual_dates.empty:
-            raise ValueError("『予実』が『実績』の作業記録がありません。")
-
-        latest_actual_date = actual_dates.max().date()
-
         default_start = pd.Timestamp(
             year=base_df["日付"].max().year,
             month=4,
@@ -1077,7 +1087,7 @@ try:
 
         st.markdown(
             f"**アグリノート出力データ更新日："
-            f"{latest_actual_date.strftime('%Y/%m/%d')}**"
+            f"{format_drive_modified_time(main_csv_last_modified)}**"
         )
 
         st.success("CSVを読み込みました。")
