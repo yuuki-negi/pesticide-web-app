@@ -441,16 +441,23 @@ def prepare_summary(df: pd.DataFrame, start_date, end_date):
         ) = group_values
 
         dates = sorted(g["日付"].dropna().unique())
+        latest_crop_date = latest_dates_by_crop.get((field_group, crop_name))
+        days_since_latest = (
+            (today - pd.Timestamp(latest_crop_date)).days
+            if latest_crop_date is not None
+            else 10**9
+        )
 
         row = {
             "圃場グループ": clean_text(field_group),
             "作付名": clean_text(crop_name),
             "前回防除日": (
-                f"{(today - pd.Timestamp(latest_dates_by_crop[(field_group, crop_name)])).days}日前"
-                if (field_group, crop_name) in latest_dates_by_crop
+                f"{days_since_latest}日前"
+                if latest_crop_date is not None
                 else ""
             ),
-            "_作付最新日": latest_dates_by_crop.get((field_group, crop_name), ""),
+            "_作付最新日": latest_crop_date if latest_crop_date is not None else "",
+            "_前回防除日数": days_since_latest,
             "農薬グループ": normalize_pesticide_group(pesticide_group),
             "農薬名": clean_text(pesticide_name),
             "有効成分": clean_text(active_ingredient),
@@ -486,6 +493,7 @@ def prepare_summary(df: pd.DataFrame, start_date, end_date):
     summary = summary.sort_values(
         [
             "圃場グループ",
+            "_前回防除日数",
             "作付名",
             "_農薬グループ順",
             "_農薬グループ名順",
@@ -495,7 +503,13 @@ def prepare_summary(df: pd.DataFrame, start_date, end_date):
         ]
     ).reset_index(drop=True)
 
-    summary = summary.drop(columns=["_農薬グループ順", "_農薬グループ名順"])
+    summary = summary.drop(
+        columns=[
+            "_前回防除日数",
+            "_農薬グループ順",
+            "_農薬グループ名順",
+        ]
+    )
 
     return summary, max_count
 
