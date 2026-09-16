@@ -104,7 +104,7 @@ def read_google_drive_csv(file_id: str, include_modified_time: bool = False):
 
 
 def format_drive_modified_time(last_modified: str) -> str:
-    """DriveのLast-Modifiedを日本時間の年月日時分秒で表示する。"""
+    """DriveのLast-Modifiedを日本時間の年月日と時分秒で表示する。"""
     if not last_modified:
         return "取得できません"
 
@@ -116,10 +116,7 @@ def format_drive_modified_time(last_modified: str) -> str:
         return "取得できません"
 
     local_time = modified_at.astimezone(ZoneInfo("Asia/Tokyo"))
-    return (
-        f"{local_time.year}年{local_time.month}月{local_time.day}日 "
-        f"{local_time.hour}時{local_time.minute}分{local_time.second}秒"
-    )
+    return local_time.strftime("%Y/%m/%d %H:%M:%S")
 
 
 def get_drive_file_ids():
@@ -413,6 +410,16 @@ def prepare_summary(df: pd.DataFrame, start_date, end_date):
         .max()
         .to_dict()
     )
+    # 薄緑の対象日は殺菌剤・殺虫剤の記録だけから選ぶ。
+    latest_protection_dates_by_crop = (
+        filtered.loc[
+            (filtered["日付"] <= today)
+            & filtered["農薬グループ"].isin({"殺菌剤", "殺虫剤"})
+        ]
+        .groupby(["圃場グループ", "作付名"])["日付"]
+        .max()
+        .to_dict()
+    )
 
     base_columns = [
         "圃場グループ",
@@ -470,6 +477,22 @@ def prepare_summary(df: pd.DataFrame, start_date, end_date):
             if latest_crop_date is not None
             else 10**9
         )
+        latest_protection_date = latest_protection_dates_by_crop.get(
+            (field_group, crop_name)
+        )
+        latest_protection_count = (
+            next(
+                (
+                    i
+                    for i, date in enumerate(dates, start=1)
+                    if pd.Timestamp(date) == pd.Timestamp(latest_protection_date)
+                ),
+                None,
+            )
+            if pesticide_group in {"殺菌剤", "殺虫剤"}
+            and latest_protection_date is not None
+            else None
+        )
 
         row = {
             "圃場グループ": clean_text(field_group),
@@ -479,7 +502,7 @@ def prepare_summary(df: pd.DataFrame, start_date, end_date):
                 if latest_crop_date is not None
                 else ""
             ),
-            "_作付最新日": latest_crop_date if latest_crop_date is not None else "",
+            "_最新防除回数": latest_protection_count,
             "_前回防除日数": days_since_latest,
             "農薬グループ": normalize_pesticide_group(pesticide_group),
             "農薬名": clean_text(pesticide_name),
@@ -922,7 +945,7 @@ def make_display_df(df: pd.DataFrame) -> pd.DataFrame:
 
     helper_columns = [
         col
-        for col in ["_使用可能回数", "_作付最新日"]
+        for col in ["_使用可能回数", "_最新防除回数"]
         if col in display_df.columns
     ]
     if helper_columns:
@@ -934,7 +957,7 @@ def make_display_df(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def style_web_table(display_df: pd.DataFrame, original_df: pd.DataFrame, max_count: int):
-    """Web表示で使用回数超過部分と作付ごとの最新日を色分けする"""
+    """Web表示で使用回数超過部分と殺菌剤・殺虫剤の最新日を色分けする"""
 
     date_cols = [f"{i}回目" for i in range(1, max_count + 1)]
 
@@ -959,24 +982,20 @@ def style_web_table(display_df: pd.DataFrame, original_df: pd.DataFrame, max_cou
                         "color: white;"
                     )
 
-        if row.name in original_df.index and "_作付最新日" in original_df.columns:
-            raw_latest_date = original_df.loc[row.name, "_作付最新日"]
-            latest_date_label = (
-                format_date(raw_latest_date)
-                if clean_text(raw_latest_date)
-                else ""
-            )
+        if row.name in original_df.index and "_最新防除回数" in original_df.columns:
+            raw_count = original_df.loc[row.name, "_最新防除回数"]
+            try:
+                latest_protection_count = int(raw_count)
+            except (TypeError, ValueError):
+                latest_protection_count = None
 
-            if latest_date_label:
-                for col in date_cols:
-                    if col in row.index and row[col] == latest_date_label:
-                        col_idx = list(row.index).index(col)
+            if latest_protection_count is not None:
+                col = f"{latest_protection_count}回目"
+                if col in row.index and row[col]:
+                    col_idx = list(row.index).index(col)
 
-                        # 使用回数超過の暗色と最新日の薄緑が重なる場合は、
-                        # 先に設定した暗色を優先して薄緑では上書きしない。
-                        if styles[col_idx]:
-                            continue
-
+                    # 使用回数超過の暗色を優先し、薄緑では上書きしない。
+                    if not styles[col_idx]:
                         styles[col_idx] = "background-color: #E8F5E9;"
 
         return styles
@@ -1222,7 +1241,7 @@ try:
         display_cols = (
             get_display_column_keys(selected_optional_columns)
             + count_cols
-            + ["_使用可能回数", "_作付最新日"]
+            + ["_使用可能回数", "_最新防除回数"]
         )
 
         st.subheader("グループ別一覧")
